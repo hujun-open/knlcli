@@ -43,56 +43,74 @@ func (cli *CLI) ShowLabs(cmd *cobra.Command, args []string) {
 	defer w.Flush()
 	sort.Slice(labList, func(i, j int) bool { return labList[i].Name < labList[j].Name })
 	for i, lab := range labList {
-		fmt.Fprintf(w, "%v:\n", lab.Name)
-		fmt.Fprintln(w, "\tNode\tType\tChassis\tPods\tWorker/PodIP")
-		sortedNodeList := v1beta1.GetSortedKeySlice(lab.Spec.NodeList)
+		if cli.Show.Verbose {
+			fmt.Fprintf(w, "%v:\n", lab.Name)
+			fmt.Fprintln(w, "\tNode\tType\tChassis\tPods\tWorker/PodIP")
+			sortedNodeList := v1beta1.GetSortedKeySlice(lab.Spec.NodeList)
 
-		for _, node := range sortedNodeList {
-			syst := lab.Spec.NodeList[node]
-			sys, nts := syst.GetSystem()
-			chassis := "n/a"
-			// slots := "n/a"
-			switch v1beta1.NodeType(strings.ToLower(nts)) {
-			case v1beta1.SRSIM:
-				chassis = *((sys).(*v1beta1.SRSim).Chassis.Model)
-				// slots = strconv.Itoa(len((sys).(*v1beta1.SRSim).Chassis.Cards))
-			case v1beta1.SRVMMAGC:
-				chassis = *((sys).(*v1beta1.MAGC).Chassis.Model)
-				// slots = strconv.Itoa(len((sys).(*v1beta1.MAGC).Chassis.Cards))
-			case v1beta1.SRVMVSIM:
-				chassis = *((sys).(*v1beta1.VSIM).Chassis.Model)
-				// slots = strconv.Itoa(len((sys).(*v1beta1.VSIM).Chassis.Cards))
-			case v1beta1.SRVMVSRI:
-				chassis = *((sys).(*v1beta1.VSRI).Chassis.Model)
-				// slots = "1"
-			case v1beta1.SRL:
-				chassis = *((sys).(*v1beta1.SRLinux).Chassis)
-				// slots = "1"
-			}
-			pods := getPods(cmd.Context(), clnt, cli.Namespace, lab.Name, node)
-			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n", node, nts, chassis, pods[0].Name, pods[0].Spec.NodeName+"/"+pods[0].Status.PodIP)
-			if len(pods) > 1 {
-				for i := 1; i < len(pods); i++ {
-					fmt.Fprintf(w, "\t\t\t\t%v\t%v\n", pods[1].Name, pods[i].Spec.NodeName+"/"+pods[i].Status.PodIP)
+			for _, node := range sortedNodeList {
+				syst := lab.Spec.NodeList[node]
+				sys, nts := syst.GetSystem()
+				chassis := "n/a"
+				// slots := "n/a"
+				switch v1beta1.NodeType(strings.ToLower(nts)) {
+				case v1beta1.SRSIM:
+					chassis = *((sys).(*v1beta1.SRSim).Chassis.Model)
+					// slots = strconv.Itoa(len((sys).(*v1beta1.SRSim).Chassis.Cards))
+				case v1beta1.SRVMMAGC:
+					chassis = *((sys).(*v1beta1.MAGC).Chassis.Model)
+					// slots = strconv.Itoa(len((sys).(*v1beta1.MAGC).Chassis.Cards))
+				case v1beta1.SRVMVSIM:
+					chassis = *((sys).(*v1beta1.VSIM).Chassis.Model)
+					// slots = strconv.Itoa(len((sys).(*v1beta1.VSIM).Chassis.Cards))
+				case v1beta1.SRVMVSRI:
+					chassis = *((sys).(*v1beta1.VSRI).Chassis.Model)
+					// slots = "1"
+				case v1beta1.SRL:
+					chassis = *((sys).(*v1beta1.SRLinux).Chassis)
+					// slots = "1"
+				}
+				pods := getPods(cmd.Context(), clnt, cli.Namespace, lab.Name, node)
+				fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n", node, nts, chassis, pods[0].Name, pods[0].Spec.NodeName+"/"+pods[0].Status.PodIP)
+				if len(pods) > 1 {
+					for i := 1; i < len(pods); i++ {
+						fmt.Fprintf(w, "\t\t\t\t%v\t%v\n", pods[1].Name, pods[i].Spec.NodeName+"/"+pods[i].Status.PodIP)
+					}
 				}
 			}
-		}
-		sortedLinkList := v1beta1.GetSortedKeySlice(lab.Spec.LinkList)
-		fmt.Fprintln(w, "\tLink\tNodes")
-		for _, link := range sortedLinkList {
-			fmt.Fprintf(w, "\t%v\t%v\n", link, *lab.Spec.LinkList[link].Connectors[0].NodeName)
-			if len(lab.Spec.LinkList[link].Connectors) > 1 {
-				for i := 1; i < len(lab.Spec.LinkList[link].Connectors); i++ {
-					fmt.Fprintf(w, "\t\t%v\n", *lab.Spec.LinkList[link].Connectors[i].NodeName)
+			fmt.Fprintln(w)
+			sortedLinkList := v1beta1.GetSortedKeySlice(lab.Spec.LinkList)
+			fmt.Fprintln(w, "\tLink\tNodes\tPort")
+			for _, link := range sortedLinkList {
+				portStr := ""
+				if lab.Spec.LinkList[link].Connectors[0].PortId != nil {
+					portStr = *lab.Spec.LinkList[link].Connectors[0].PortId
+				}
+				fmt.Fprintf(w, "\t%v\t%v\t%v\n", link,
+					*lab.Spec.LinkList[link].Connectors[0].NodeName,
+					portStr)
+				if len(lab.Spec.LinkList[link].Connectors) > 1 {
+
+					for k := 1; k < len(lab.Spec.LinkList[link].Connectors); k++ {
+						portStr = ""
+						if lab.Spec.LinkList[link].Connectors[k].PortId != nil {
+							portStr = *lab.Spec.LinkList[link].Connectors[k].PortId
+						}
+						fmt.Fprintf(w, "\t\t%v\t%v\n",
+							*lab.Spec.LinkList[link].Connectors[k].NodeName,
+							portStr,
+						)
+					}
 				}
 			}
-		}
 
-		if i != len(labList)-1 {
-			fmt.Fprintf(w, "---\n")
+			if i != len(labList)-1 {
+				fmt.Fprintf(w, "---\n")
+			}
+		} else {
+			fmt.Fprintln(w, lab.Name)
 		}
 	}
-
 }
 
 func getPods(ctx context.Context, clnt client.Client, ns, lab, node string) []corev1.Pod {

@@ -35,7 +35,8 @@ type CLI struct {
 		All bool   `usage:"remove all labs in the specified namespace"`
 	} `action:"DelLab" alias:"rm" usage:"remove a lab"`
 	Show struct {
-		Lab string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
+		Lab     string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
+		Verbose bool   `short:"v" usage:"show lab details"`
 	} `action:"ShowLabs" usage:"show existing Lab info"`
 	Shell struct {
 		Lab  string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
