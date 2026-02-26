@@ -50,6 +50,18 @@ type CLI struct {
 		Lab    string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
 		Render bool   `usage:"render to asii output if true, require d2 installed"`
 	} `action:"ShowTopo" usage:"generate lab topology in D2 format"`
+	Config struct {
+		User   string `usage:"username"`
+		Passwd string `usage:"password"`
+		Save   struct {
+			Output string `usage:"output folder name"`
+			Lab    string `noun:"1" usage:"lab name" complete:"K8sLabComp"`
+		} `action:"SaveCfg" usage:"save CNF/VNF's configurations"`
+		Load struct {
+			Input string `usage:"config folder name"`
+			Lab   string `noun:"1" usage:"lab name" complete:"K8sLabComp"`
+		} `action:"LoadCfg" usage:"load CNF/VNF's configurations"`
+	} `action:"" usage:"save/load configuration"`
 	Namespace string `alias:"ns" short:"n" usage:"k8s namespace" complete:"K8sNSComp"`
 }
 
@@ -155,6 +167,9 @@ func DefCLI() *CLI {
 		KubeCfgPath: kpath,
 	}
 	r.Topo.Render = true
+	r.Config.User = "admin"
+	r.Config.Save.Output = "."
+	r.Config.Load.Input = "."
 	return r
 }
 func main() {
