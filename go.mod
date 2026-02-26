@@ -2,14 +2,13 @@ module knlcli
 
 go 1.25.1
 
-replace kubenetlab.net/knl => github.com/hujun-open/knl v0.0.3
+replace kubenetlab.net/knl => github.com/hujun-open/knl v0.0.4
 
 require (
 	github.com/hujun-open/completers v0.0.1
 	github.com/hujun-open/myflags/v2 v2.2.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/crypto v0.46.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
@@ -68,6 +67,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect

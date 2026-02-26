@@ -139,8 +139,8 @@ github.com/hujun-open/completers v0.0.1 h1:B0GhD2IYnGVCpDe5jrNeT2Ud9PSLJHogN+YzN
 github.com/hujun-open/completers v0.0.1/go.mod h1:UAQBGzibvL4Rrm/UlzQqu9FUf13w0m6UJnwymppgMBA=
 github.com/hujun-open/k8slan v0.0.7 h1:+88NHwz+XT18ONM4yGuLwKc3/M7bjyHB0ATAL8ArpkI=
 github.com/hujun-open/k8slan v0.0.7/go.mod h1:z+1DsDsLt+EAzD9G3BbGmcBXynnxRpUVCaZfYAiRjHI=
-github.com/hujun-open/knl v0.0.3 h1:/VqUzqN1lELx+F2z7CvwaYXmIZC0UiEHzELiHyyirMk=
-github.com/hujun-open/knl v0.0.3/go.mod h1:4i8lvR9N0fs6nJGgJRcJlm3TsXIdEr5B+7LxverED0c=
+github.com/hujun-open/knl v0.0.4 h1:z8DK0y0Cj8KJJj7sDuV5ouI7nVRmGyZk7DZ+7qGEUno=
+github.com/hujun-open/knl v0.0.4/go.mod h1:4i8lvR9N0fs6nJGgJRcJlm3TsXIdEr5B+7LxverED0c=
 github.com/hujun-open/myflags/v2 v2.2.3 h1:z0upG8TyJ3J3yW/zJQB8FInFq3wpiv4qu3ur/mAbp3s=
 github.com/hujun-open/myflags/v2 v2.2.3/go.mod h1:BTkvOeBLaEX9WhjSsURdTGSXgXm59sKCqegjWI/06QI=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
