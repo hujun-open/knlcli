@@ -23,13 +23,20 @@ func (cli *CLI) SaveCfg(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	passwd := cli.Config.Passwd
 	for nodeName, node := range lab.Spec.NodeList {
+		sys, sysType := node.GetSystem()
 		log.Printf("saving config for node %v ...", nodeName)
-		sys, _ := node.GetSystem()
 		if cli.Config.Passwd == "" {
-			cli.Config.Passwd = "admin"
+			switch sysType {
+			case "VSIM", "VSRI", "SRSIM", "MAGC":
+				passwd = "admin"
+			case "SRL":
+				passwd = "NokiaSrl1!"
+
+			}
 		}
-		cfg, err := sys.GetCfg(context.Background(), clnt, cli.Namespace, cli.Config.Save.Lab, nodeName, cli.Config.User, cli.Config.Passwd)
+		cfg, err := sys.GetCfg(context.Background(), clnt, cli.Namespace, cli.Config.Save.Lab, nodeName, cli.Config.User, passwd)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -77,11 +84,18 @@ func (cli *CLI) LoadCfg(cmd *cobra.Command, args []string) {
 				log.Fatalf("failed to read config file for %v from file %v, %v", nodeName, fileName, err)
 			}
 		}
-		sys, _ := node.GetSystem()
+		sys, sysType := node.GetSystem()
+		passwd := cli.Config.Passwd
 		if cli.Config.Passwd == "" {
-			cli.Config.Passwd = "admin"
+			switch sysType {
+			case "VSIM", "VSRI", "SRSIM", "MAGC":
+				passwd = "admin"
+			case "SRL":
+				passwd = "NokiaSrl1!"
+
+			}
 		}
-		support, err := sys.LoadCfg(context.Background(), clnt, cli.Namespace, cli.Config.Load.Lab, nodeName, cli.Config.User, cli.Config.Passwd, string(buf))
+		support, err := sys.LoadCfg(context.Background(), clnt, cli.Namespace, cli.Config.Load.Lab, nodeName, cli.Config.User, passwd, string(buf))
 		if !support {
 			log.Printf("%v doesn't support load config, skip", nodeName)
 			continue
