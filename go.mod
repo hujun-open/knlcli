@@ -2,7 +2,8 @@ module knlcli
 
 go 1.25.1
 
-replace kubenetlab.net/knl => github.com/hujun-open/knl v0.0.5
+// replace kubenetlab.net/knl => github.com/hujun-open/knl v0.0.5
+replace kubenetlab.net/knl => ../knl2
 
 require (
 	github.com/hujun-open/completers v0.0.1
@@ -15,6 +16,7 @@ require (
 	kubenetlab.net/knl v0.0.0-00010101000000-000000000000
 	kubevirt.io/api v1.7.0
 	sigs.k8s.io/controller-runtime v0.23.0
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -93,5 +95,4 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )

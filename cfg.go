@@ -8,9 +8,25 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"kubenetlab.net/knl/api/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+	"sigs.k8s.io/yaml"
 )
+
+func addGVK(lab *v1beta1.Lab) {
+	scheme := runtime.NewScheme()
+	err := v1beta1.AddToScheme(scheme)
+	if err != nil {
+		panic(err)
+	}
+	gvk, err := apiutil.GVKForObject(lab, scheme)
+	if err != nil {
+		panic(err)
+	}
+	lab.SetGroupVersionKind(gvk)
+}
 
 func (cli *CLI) SaveCfg(cmd *cobra.Command, args []string) {
 	clnt, err := cli.getClnt()
@@ -23,6 +39,24 @@ func (cli *CLI) SaveCfg(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	outFolder := filepath.Join(cli.Config.Save.Output, lab.Name)
+	err = os.MkdirAll(outFolder, 0744)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//save lab manifest
+	cleanLab := lab.GetClean()
+	addGVK(cleanLab)
+	labYaml, err := yaml.Marshal(cleanLab)
+	if err != nil {
+		log.Fatalf("failed to marshal lab %v to YAML, %v", lab.Name, err)
+	}
+	outFile := filepath.Join(outFolder, "lab.yaml")
+	err = os.WriteFile(outFile, labYaml, 0644)
+	if err != nil {
+		log.Fatalf("failed to save lab %v's YAML, %v", lab.Name, err)
+	}
+	log.Printf("saved lab %v YAML to %v", lab.Name, outFile)
 	passwd := cli.Config.Passwd
 	for nodeName, node := range lab.Spec.NodeList {
 		sys, sysType := node.GetSystem()
@@ -44,11 +78,7 @@ func (cli *CLI) SaveCfg(cmd *cobra.Command, args []string) {
 			log.Printf("%v returns empty string, skip saving", nodeName)
 			continue
 		}
-		outFolder := filepath.Join(cli.Config.Save.Output, lab.Name)
-		err = os.MkdirAll(outFolder, 0744)
-		if err != nil {
-			log.Fatal(err)
-		}
+
 		outFileName := filepath.Join(outFolder, nodeName+".cfg")
 		err = os.WriteFile(outFileName, []byte(cfg), 0644)
 		if err != nil {
@@ -60,6 +90,7 @@ func (cli *CLI) SaveCfg(cmd *cobra.Command, args []string) {
 }
 
 func (cli *CLI) LoadCfg(cmd *cobra.Command, args []string) {
+	//TODO: also load lab's YAML
 	clnt, err := cli.getClnt()
 	if err != nil {
 		log.Fatal(err)
