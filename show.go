@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"kubenetlab.net/knl/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,10 +43,21 @@ func (cli *CLI) ShowLabs(cmd *cobra.Command, args []string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 	defer w.Flush()
 	sort.Slice(labList, func(i, j int) bool { return labList[i].Name < labList[j].Name })
+	if !cli.Show.Verbose {
+		fmt.Fprintln(w, "\tLab\tReady\tMsg")
+	}
+	getReady := func(pod corev1.Pod) string {
+		for _, c := range pod.Status.Conditions {
+			if c.Type == corev1.PodReady {
+				return string(c.Status)
+			}
+		}
+		return ""
+	}
 	for i, lab := range labList {
 		if cli.Show.Verbose {
 			fmt.Fprintf(w, "%v:\n", lab.Name)
-			fmt.Fprintln(w, "\tNode\tType\tChassis\tPods\tWorker/PodIP")
+			fmt.Fprintln(w, "\tNode\tType\tChassis\tPods\tPodReady\tWorker/PodIP")
 			sortedNodeList := v1beta1.GetSortedKeySlice(lab.Spec.NodeList)
 
 			for _, node := range sortedNodeList {
@@ -71,10 +83,10 @@ func (cli *CLI) ShowLabs(cmd *cobra.Command, args []string) {
 					// slots = "1"
 				}
 				pods := getPods(cmd.Context(), clnt, cli.Namespace, lab.Name, node)
-				fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n", node, nts, chassis, pods[0].Name, pods[0].Spec.NodeName+"/"+pods[0].Status.PodIP)
+				fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\n", node, nts, chassis, pods[0].Name, getReady(pods[0]), pods[0].Spec.NodeName+"/"+pods[0].Status.PodIP)
 				if len(pods) > 1 {
 					for i := 1; i < len(pods); i++ {
-						fmt.Fprintf(w, "\t\t\t\t%v\t%v\n", pods[1].Name, pods[i].Spec.NodeName+"/"+pods[i].Status.PodIP)
+						fmt.Fprintf(w, "\t\t\t\t%v\t%v\t%v\n", pods[i].Name, getReady(pods[i]), pods[i].Spec.NodeName+"/"+pods[i].Status.PodIP)
 					}
 				}
 			}
@@ -108,7 +120,12 @@ func (cli *CLI) ShowLabs(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(w, "---\n")
 			}
 		} else {
-			fmt.Fprintln(w, lab.Name)
+			//brief output
+			ready, msg, err := getLabReadyCondition(cmd.Context(), clnt, cli.Namespace, lab.Name)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Fprintf(w, "\t%v\t%v\t%v\n", lab.Name, ready, msg)
 		}
 	}
 }
@@ -127,4 +144,19 @@ func getPods(ctx context.Context, clnt client.Client, ns, lab, node string) []co
 		log.Fatal(err)
 	}
 	return pods.Items
+}
+
+func getLabReadyCondition(ctx context.Context, clnt client.Client, ns, labName string) (ready bool, msg string, err error) {
+	lab := new(v1beta1.Lab)
+	labKey := types.NamespacedName{Namespace: ns, Name: labName}
+	err = clnt.Get(ctx, labKey, lab)
+	if err != nil {
+		return
+	}
+	for _, c := range lab.Status.Conditions {
+		if c.Type == v1beta1.ReadyCondition {
+			return c.Status == metav1.ConditionTrue, c.Message, nil
+		}
+	}
+	return false, "", fmt.Errorf("ready condition not found")
 }
