@@ -2,7 +2,7 @@ module knlcli
 
 go 1.25.1
 
-replace kubenetlab.net/knl => github.com/hujun-open/knl v0.0.8
+replace kubenetlab.net/knl => github.com/hujun-open/knl v0.0.9
 
 // replace kubenetlab.net/knl => ../knl2
 

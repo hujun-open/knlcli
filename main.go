@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hujun-open/completers"
 	"github.com/hujun-open/myflags/v2"
+	_ "github.com/hujun-open/myflags/v2/types"
 	v1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -58,8 +60,10 @@ type CLI struct {
 			Lab    string `noun:"1" usage:"lab name" complete:"K8sLabComp"`
 		} `action:"SaveCfg" usage:"save CNF/VNF's configurations"`
 		Load struct {
-			Input string `usage:"config folder name"`
-			Lab   string `noun:"1" usage:"lab name" complete:"K8sLabComp"`
+			Input       string        `usage:"config folder name"`
+			Lab         string        `noun:"1" usage:"lab name" complete:"K8sLabComp"`
+			ReCreateLab bool          `alias:"recreate" usage:"recreate the lab before load configurations"`
+			Timeout     time.Duration `alias:"wait" usage:"wait timeout"`
 		} `action:"LoadCfg" usage:"load CNF/VNF's configurations"`
 	} `action:"" usage:"save/load configuration"`
 	Namespace string `alias:"ns" short:"n" usage:"k8s namespace" complete:"K8sNSComp"`
@@ -170,6 +174,7 @@ func DefCLI() *CLI {
 	r.Config.User = "admin"
 	r.Config.Save.Output = "."
 	r.Config.Load.Input = "."
+	r.Config.Load.Timeout = 5 * time.Minute
 	return r
 }
 func main() {

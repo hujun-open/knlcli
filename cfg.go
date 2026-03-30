@@ -3,16 +3,24 @@ package main
 import (
 	"context"
 	"errors"
+
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
+
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	runtimeyaml "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"kubenetlab.net/knl/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
-	"sigs.k8s.io/yaml"
 )
 
 func addGVK(lab *v1beta1.Lab) {
@@ -96,12 +104,80 @@ func (cli *CLI) LoadCfg(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 	lab := &v1beta1.Lab{}
+	lab.Namespace = cli.Namespace
+	lab.Name = cli.Config.Load.Lab
 	labKey := types.NamespacedName{Namespace: cli.Namespace, Name: cli.Config.Load.Lab}
-	err = clnt.Get(context.Background(), labKey, lab)
+	folderName := filepath.Join(cli.Config.Load.Input, lab.Name)
+	if cli.Config.Load.ReCreateLab {
+		labFile := filepath.Join(folderName, "lab.yaml")
+		buf, err := os.ReadFile(labFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("deleting lab %v", lab.Name)
+		_ = clnt.Delete(cmd.Context(), lab)
+		wctx, wcancel := context.WithTimeout(cmd.Context(), cli.Config.Load.Timeout)
+		defer wcancel()
+		err = wait.PollUntilContextCancel(wctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
+			err := clnt.Get(ctx, labKey, lab)
+			if k8serr.IsNotFound(err) {
+				return true, nil // lab is gone, we can proceed
+			}
+			if err != nil {
+				return false, err
+			}
+
+			return false, nil // lab still exists, keep polling
+		})
+
+		if err != nil {
+			log.Printf("Error or timeout: %v", err)
+		}
+		obj := &unstructured.Unstructured{}
+		dec := runtimeyaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
+		_, _, err = dec.Decode(buf, nil, obj)
+		if err != nil {
+			log.Fatalf("failed to decode YAML: %v", err)
+		}
+
+		log.Printf("create lab %v", lab.Name)
+		err = clnt.Create(cmd.Context(), obj)
+		if err != nil {
+			log.Fatalf("failed to create lab %v, %v", lab.Name, err)
+		}
+		log.Printf("waiting for lab %v to become ready...", lab.Name)
+		ctx, cancel := context.WithTimeout(cmd.Context(), cli.Config.Load.Timeout)
+		defer cancel()
+		err = wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
+			err := clnt.Get(ctx, labKey, lab)
+			if err != nil {
+				return false, nil
+			}
+
+			for _, cond := range lab.Status.Conditions {
+				if cond.Type == v1beta1.ReadyCondition && cond.Status == metav1.ConditionTrue {
+					return true, nil
+				}
+			}
+
+			return false, nil
+		})
+
+		if err != nil {
+			log.Printf("Error or timeout: %v", err)
+		} else {
+			log.Print("lab is Ready!")
+		}
+
+	}
+
+	err = clnt.Get(cmd.Context(), labKey, lab)
 	if err != nil {
 		log.Fatal(err)
 	}
-	folderName := filepath.Join(cli.Config.Load.Input, lab.Name)
+	const (
+		retryInterval = 5 * time.Second
+	)
 	log.Printf("loading config from folder %v...", folderName)
 	for nodeName, node := range lab.Spec.NodeList {
 		fileName := filepath.Join(folderName, nodeName+".cfg")
@@ -126,15 +202,26 @@ func (cli *CLI) LoadCfg(cmd *cobra.Command, args []string) {
 
 			}
 		}
-		support, err := sys.LoadCfg(context.Background(), clnt, cli.Namespace, cli.Config.Load.Lab, nodeName, cli.Config.User, passwd, string(buf))
-		if !support {
-			log.Printf("%v doesn't support load config, skip", nodeName)
-			continue
-		}
-		if err != nil {
-			log.Fatalf("failed to load config for %v, %v", nodeName, err)
-		}
-		log.Printf("loaded config for %v", nodeName)
 
+		var support bool
+		t0 := time.Now()
+		for {
+			support, err = sys.LoadCfg(cmd.Context(), clnt, cli.Namespace, cli.Config.Load.Lab, nodeName, cli.Config.User, passwd, string(buf))
+			if !support {
+				log.Printf("%v doesn't support load config, skip", nodeName)
+				continue
+			}
+			if err != nil {
+				log.Printf("failed to load config for %v: %v", nodeName, err)
+				if time.Since(t0) > cli.Config.Load.Timeout {
+					log.Fatal("timeout")
+				}
+				log.Print("retry...")
+				time.Sleep(retryInterval)
+			} else {
+				log.Printf("loaded config for %v", nodeName)
+				break
+			}
+		}
 	}
 }
