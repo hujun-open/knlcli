@@ -41,8 +41,10 @@ type CLI struct {
 		Verbose bool   `short:"v" usage:"show lab details"`
 	} `action:"ShowLabs" usage:"show existing Lab info"`
 	Shell struct {
-		Lab  string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
-		Node string `noun:"2" usage:"node name" complete:"ShellKNLNodeComp"`
+		Lab      string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
+		Node     string `noun:"2" usage:"node name" complete:"ShellKNLNodeComp"`
+		Username string `usage:"username to login, auto select when empty"`
+		Passwd   string `usage:"password to login, auto select when empty"`
 	} `action:"ShellNode" usage:"connect to the specified node in the specified lab"`
 	Console struct {
 		Lab  string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`

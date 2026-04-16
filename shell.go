@@ -22,7 +22,8 @@ func (cli *CLI) ShellNode(cmd *cobra.Command, args []string) {
 	}
 	if _, ok := lab.Spec.NodeList[cli.Shell.Node]; ok {
 		sys, _ := lab.Spec.NodeList[cli.Shell.Node].GetSystem()
-		sys.Shell(context.Background(), clnt, cli.Namespace, cli.Shell.Lab, cli.Shell.Node, "")
+		log.Printf("login as user %v", cli.Shell.Username)
+		sys.Shell(context.Background(), clnt, cli.Namespace, cli.Shell.Lab, cli.Shell.Node, cli.Shell.Username, cli.Shell.Passwd)
 	} else {
 		log.Fatalf("node %v is not specified in the lab %v", cli.Shell.Node, cli.Shell.Lab)
 	}
