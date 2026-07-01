@@ -50,6 +50,13 @@ type CLI struct {
 		Lab  string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
 		Node string `noun:"2" usage:"node name" complete:"ConsoleKNLNodeComp"`
 	} `action:"ConsoleNode" usage:"connect to the console of specified node in the specified lab"`
+	Exec struct {
+		Lab      string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
+		Node     string `noun:"2" usage:"node name" complete:"ExecKNLNodeComp"`
+		Cmd      string `noun:"3" usage:"command to run (quote if it contains spaces)"`
+		Username string `usage:"username to login, auto select when empty"`
+		Passwd   string `usage:"password to login, auto select when empty"`
+	} `action:"ExecNode" usage:"run a command on the specified node and print output"`
 	Topo struct {
 		Lab    string `noun:"1" usage:"knl lab name" complete:"K8sLabComp"`
 		Render bool   `usage:"render to asii output if true, require d2 installed"`
@@ -90,6 +97,10 @@ func (cli *CLI) ShellKNLNodeComp(cmd *cobra.Command, args []string, toComplete s
 
 func (cli *CLI) ConsoleKNLNodeComp(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	return cli.knlNodeComp(cli.Console.Lab)
+}
+
+func (cli *CLI) ExecKNLNodeComp(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	return cli.knlNodeComp(cli.Exec.Lab)
 }
 
 func (cli *CLI) K8sVMIComp(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
