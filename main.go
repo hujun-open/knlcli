@@ -76,11 +76,13 @@ type CLI struct {
 		} `action:"LoadCfg" usage:"load CNF/VNF's configurations"`
 	} `action:"" usage:"save/load configuration"`
 	ExportDisk struct {
-		Labdef string `alias:"lab" noun:"1" usage:"knl lab yaml file path"`
-		Node   string `noun:"2" usage:"General VM node name"`
-		Output string `alias:"o" usage:"output qcow2 file path"`
-		Image  string `usage:"helper container image with qemu-img"`
-	} `action:"ExportDiskNode" usage:"export General VM disk to qcow2 file"`
+		Labdef  string `alias:"lab" noun:"1" usage:"knl lab yaml file path"`
+		Node    string `noun:"2" usage:"General VM node name"`
+		Worker  string `usage:"Kubernetes node name to run the helper pod (hostPath target)"`
+		HostDir string `usage:"absolute directory on the worker node for the output qcow2"`
+		Output  string `alias:"o" usage:"output qcow2 filename under --host-dir"`
+		Image   string `usage:"helper container image with qemu-img"`
+	} `action:"ExportDiskNode" usage:"export General VM disk to qcow2 file on a worker host path"`
 	Namespace string `alias:"ns" short:"n" usage:"k8s namespace" complete:"K8sNSComp"`
 }
 

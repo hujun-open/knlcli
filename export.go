@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ const (
 	exportPodLabelKey   = "app.kubernetes.io/name"
 	exportPodLabelValue = "knlcli-export"
 	exportPodWait       = 5 * time.Minute
+	exportOutMountPath  = "/out"
 )
 
 func (cli *CLI) ExportDiskNode(cmd *cobra.Command, args []string) {
@@ -35,6 +37,15 @@ func (cli *CLI) ExportDiskNode(cmd *cobra.Command, args []string) {
 	}
 	if cli.ExportDisk.Node == "" {
 		log.Fatal("node name not specified")
+	}
+	if cli.ExportDisk.Worker == "" {
+		log.Fatal("--worker (Kubernetes node name) is required")
+	}
+	if cli.ExportDisk.HostDir == "" {
+		log.Fatal("--host-dir (absolute directory on the worker) is required")
+	}
+	if !filepath.IsAbs(cli.ExportDisk.HostDir) {
+		log.Fatalf("--host-dir must be an absolute path, got %q", cli.ExportDisk.HostDir)
 	}
 
 	lab, err := parseLabYAML(cli.ExportDisk.Labdef)
@@ -60,9 +71,13 @@ func (cli *CLI) ExportDiskNode(cmd *cobra.Command, args []string) {
 	vmiName := v1beta1.GetPodName(labName, cli.ExportDisk.Node)
 	pvcName := v1beta1.GetVMPCDVName(labName, cli.ExportDisk.Node)
 
-	output := cli.ExportDisk.Output
-	if output == "" {
-		output = cli.ExportDisk.Node + ".qcow2"
+	outputName := cli.ExportDisk.Output
+	if outputName == "" {
+		outputName = cli.ExportDisk.Node + ".qcow2"
+	}
+	outputName = filepath.Base(outputName)
+	if outputName == "." || outputName == string(filepath.Separator) {
+		log.Fatal("invalid -o / --output filename")
 	}
 
 	image := cli.ExportDisk.Image
@@ -84,7 +99,9 @@ func (cli *CLI) ExportDiskNode(cmd *cobra.Command, args []string) {
 	}
 
 	podName := fmt.Sprintf("knlcli-export-%s", rand.String(8))
-	pod := newExportPod(podName, ns, pvcName, image)
+	hostPath := filepath.Join(cli.ExportDisk.HostDir, outputName)
+	log.Printf("creating export helper pod %s on worker %s", podName, cli.ExportDisk.Worker)
+	pod := newExportPod(podName, ns, pvcName, image, cli.ExportDisk.Worker, cli.ExportDisk.HostDir)
 	if err := clnt.Create(ctx, pod); err != nil {
 		log.Fatalf("create export helper pod: %v", err)
 	}
@@ -94,23 +111,18 @@ func (cli *CLI) ExportDiskNode(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	log.Printf("waiting for export helper pod %s to run", podName)
 	if err := waitForPodRunning(ctx, clnt, ns, podName, exportPodWait); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := streamDiskAsQCOW2(ctx, ns, podName, output); err != nil {
+	log.Printf("converting disk to %s:%s (progress from qemu-img -p)", cli.ExportDisk.Worker, hostPath)
+	size, err := convertDiskToHostPath(ctx, ns, podName, outputName)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	info, err := os.Stat(output)
-	if err != nil {
-		log.Fatalf("verify output file: %v", err)
-	}
-	if info.Size() == 0 {
-		log.Fatalf("output file %q is empty", output)
-	}
-
-	log.Printf("exported %s disk to %s (%d bytes)", cli.ExportDisk.Node, output, info.Size())
+	log.Printf("exported %s disk to %s:%s (%d bytes)", cli.ExportDisk.Node, cli.ExportDisk.Worker, hostPath, size)
 }
 
 func parseLabYAML(path string) (*v1beta1.Lab, error) {
@@ -152,7 +164,8 @@ func ensurePVCExists(ctx context.Context, clnt client.Client, ns, pvcName string
 	return err
 }
 
-func newExportPod(name, ns, pvcName, image string) *corev1.Pod {
+func newExportPod(name, ns, pvcName, image, worker, hostDir string) *corev1.Pod {
+	hostPathType := corev1.HostPathDirectoryOrCreate
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -162,6 +175,7 @@ func newExportPod(name, ns, pvcName, image string) *corev1.Pod {
 			},
 		},
 		Spec: corev1.PodSpec{
+			NodeName:      worker,
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
@@ -174,6 +188,10 @@ func newExportPod(name, ns, pvcName, image string) *corev1.Pod {
 							MountPath: "/pvc",
 							ReadOnly:  true,
 						},
+						{
+							Name:      "out",
+							MountPath: exportOutMountPath,
+						},
 					},
 				},
 			},
@@ -184,6 +202,15 @@ func newExportPod(name, ns, pvcName, image string) *corev1.Pod {
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 							ClaimName: pvcName,
 							ReadOnly:  true,
+						},
+					},
+				},
+				{
+					Name: "out",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: hostDir,
+							Type: &hostPathType,
 						},
 					},
 				},
@@ -215,56 +242,55 @@ func waitForPodRunning(ctx context.Context, clnt client.Client, ns, podName stri
 	return fmt.Errorf("timed out waiting for export helper pod %q to run", podName)
 }
 
-func streamDiskAsQCOW2(ctx context.Context, ns, podName, outputPath string) error {
+func convertDiskToHostPath(ctx context.Context, ns, podName, outputName string) (int64, error) {
 	kubectlPath, err := exec.LookPath("kubectl")
 	if err != nil {
-		return fmt.Errorf("kubectl not found in PATH: %w", err)
+		return 0, fmt.Errorf("kubectl not found in PATH: %w", err)
 	}
 
 	srcFormat, err := detectDiskFormat(ctx, kubectlPath, ns, podName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil && filepath.Dir(outputPath) != "." {
-		return fmt.Errorf("create output directory: %w", err)
-	}
+	outPodPath := path.Join(exportOutMountPath, outputName)
 
-	outFile, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	args := []string{"exec", "-n", ns, podName, "--", "qemu-img", "convert", "-O", "qcow2"}
+	convertArgs := []string{"exec", "-n", ns, podName, "--",
+		"qemu-img", "convert", "-p", "-O", "qcow2"}
 	if srcFormat != "" {
-		args = append(args, "-f", srcFormat)
+		convertArgs = append(convertArgs, "-f", srcFormat)
 	}
-	args = append(args, "/pvc/disk.img", "/dev/stdout")
+	convertArgs = append(convertArgs, "/pvc/disk.img", outPodPath)
 
-	cmd := exec.CommandContext(ctx, kubectlPath, args...)
-	cmd.Stdout = outFile
-	stderr, err := cmd.StderrPipe()
+	convertCmd := exec.CommandContext(ctx, kubectlPath, convertArgs...)
+	convertCmd.Stdout = os.Stdout
+	convertCmd.Stderr = os.Stderr
+	if err := convertCmd.Run(); err != nil {
+		return 0, fmt.Errorf("qemu-img convert in pod failed: %w", err)
+	}
+
+	size, err := statFileInPod(ctx, kubectlPath, ns, podName, outPodPath)
 	if err != nil {
-		return fmt.Errorf("setup stderr pipe: %w", err)
+		return 0, err
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start qemu-img convert: %w", err)
+	if size == 0 {
+		return 0, fmt.Errorf("output file %q is empty", outPodPath)
 	}
+	return size, nil
+}
 
-	errOut, readErr := io.ReadAll(stderr)
-	waitErr := cmd.Wait()
-	if readErr != nil {
-		return readErr
+func statFileInPod(ctx context.Context, kubectlPath, ns, podName, path string) (int64, error) {
+	cmd := exec.CommandContext(ctx, kubectlPath, "exec", "-n", ns, podName, "--",
+		"stat", "-c", "%s", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("stat output file in pod: %w", err)
 	}
-	if waitErr != nil {
-		msg := strings.TrimSpace(string(errOut))
-		if msg != "" {
-			return fmt.Errorf("qemu-img convert failed: %w: %s", waitErr, msg)
-		}
-		return fmt.Errorf("qemu-img convert failed: %w", waitErr)
+	size, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse output file size %q: %w", strings.TrimSpace(string(out)), err)
 	}
-	return nil
+	return size, nil
 }
 
 func detectDiskFormat(ctx context.Context, kubectlPath, ns, podName string) (string, error) {
