@@ -75,8 +75,16 @@ type CLI struct {
 			Timeout     time.Duration `alias:"wait" usage:"wait timeout"`
 		} `action:"LoadCfg" usage:"load CNF/VNF's configurations"`
 	} `action:"" usage:"save/load configuration"`
+	ExportDisk struct {
+		Labdef string `alias:"lab" noun:"1" usage:"knl lab yaml file path"`
+		Node   string `noun:"2" usage:"General VM node name"`
+		Output string `alias:"o" usage:"output qcow2 file path"`
+		Image  string `usage:"helper container image with qemu-img"`
+	} `action:"ExportDiskNode" usage:"export General VM disk to qcow2 file"`
 	Namespace string `alias:"ns" short:"n" usage:"k8s namespace" complete:"K8sNSComp"`
 }
+
+const defaultExportHelperImage = "ghcr.io/hujun-open/knlcli-export:latest"
 
 func (cli *CLI) getClnt() (client.Client, error) {
 	cfg, err := clientcmd.BuildConfigFromFlags("", cli.KubeCfgPath)
@@ -159,11 +167,7 @@ func (cli *CLI) CreateLab(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	scheme := runtime.NewScheme()
-	v1beta1.AddToScheme(scheme)
-	decode := serializer.NewCodecFactory(scheme).UniversalDeserializer().Decode
-	lab := new(v1beta1.Lab)
-	_, _, err = decode(buf, nil, lab)
+	lab, err := decodeLab(buf)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -172,6 +176,20 @@ func (cli *CLI) CreateLab(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 	fmt.Println(lab.Name, "created")
+}
+
+func decodeLab(buf []byte) (*v1beta1.Lab, error) {
+	scheme := runtime.NewScheme()
+	if err := v1beta1.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+	decode := serializer.NewCodecFactory(scheme).UniversalDeserializer().Decode
+	lab := new(v1beta1.Lab)
+	_, _, err := decode(buf, nil, lab)
+	if err != nil {
+		return nil, err
+	}
+	return lab, nil
 }
 
 func DefCLI() *CLI {
@@ -187,7 +205,8 @@ func DefCLI() *CLI {
 	r.Config.User = "admin"
 	r.Config.Save.Output = "."
 	r.Config.Load.Input = "."
-	r.Config.Load.Timeout = 5 * time.Minute
+	r.Config.Load.Timeout = 20 * time.Second
+	r.ExportDisk.Image = defaultExportHelperImage
 	return r
 }
 func main() {

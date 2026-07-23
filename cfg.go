@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+
 	"time"
 
 	"github.com/spf13/cobra"
@@ -213,6 +214,9 @@ func (cli *CLI) LoadCfg(cmd *cobra.Command, args []string) {
 			}
 			if err != nil {
 				log.Printf("failed to load config for %v: %v", nodeName, err)
+				if strings.Contains(err.Error(), "rpc error:") {
+					log.Fatal("rpc error, abort")
+				}
 				if time.Since(t0) > cli.Config.Load.Timeout {
 					log.Fatal("timeout")
 				}
